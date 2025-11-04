@@ -7,6 +7,10 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 
+// ✅ pakai namespace yang benar
+use Filament\Support\Assets\Css;
+use Filament\Support\Assets\Js;
+
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -44,18 +48,24 @@ class AdminPanelProvider extends PanelProvider
             ->colors(['primary' => Color::Emerald])
             ->darkMode(true)
 
-            // Paksa inject asset Filament yang sudah dipublish ke /public
-            ->renderHook('panels::head.end', fn () => view('filament.hooks.assets'))
+            // ✅ Daftarkan asset publish-an ke panel (pakai helper asset() biar aman URL-nya)
+            ->assets([
+                Css::make('filament-support-css', asset('css/filament/support/support.css')),
+                Css::make('filament-forms-css', asset('css/filament/forms/forms.css')),
+                Css::make('filament-app-css', asset('css/filament/filament/app.css')),
 
-            // Login & halaman dasar
+                Js::make('filament-support-js', asset('js/filament/support/support.js')),
+                Js::make('filament-notifications-js', asset('js/filament/notifications/notifications.js')),
+                Js::make('filament-tables-js', asset('js/filament/tables/components/table.js')),
+                Js::make('filament-app-js', asset('js/filament/filament/app.js')),
+            ])
+
+            // Auth & halaman dasar
             ->login()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
-                // Jika kamu sudah buat Dashboard kustom, gunakan baris di bawah:
-                // \App\Filament\Pages\Dashboard::class,
-                // Kalau belum, pakai default:
-                Pages\Dashboard::class,
+                \App\Filament\Pages\Dashboard::class, // pakai Dashboard kustom kamu; kalau belum ada ganti ke Pages\Dashboard::class
             ])
 
             // Widgets
@@ -69,7 +79,6 @@ class AdminPanelProvider extends PanelProvider
                 DistribusiKategoriInfoChart::class,
                 SekolahPerJenjangChart::class,
                 Widgets\AccountWidget::class,
-                // Widgets\FilamentInfoWidget::class, // opsional
             ])
 
             // Middleware
