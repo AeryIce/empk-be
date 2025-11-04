@@ -15,7 +15,7 @@ class SystemStatus extends Widget
     /**
      * @return array{
      *   app:string,env:string,url:?string,php:string,laravel:string,
-     *   tz:string,now:string,db_ok:bool,db_error:?string
+     *   tz:string,now:string,db_ok:bool,db_error:?string,codename:?string
      * }
      */
     protected function getViewData(): array
@@ -40,6 +40,7 @@ class SystemStatus extends Widget
             'now'      => now('Asia/Jakarta')->format('Y-m-d H:i:s'),
             'db_ok'    => $dbOk,
             'db_error' => $err,
+            'codename' => env('APP_CODENAME'), // <= badge “reliable-luck”
         ];
     }
 }

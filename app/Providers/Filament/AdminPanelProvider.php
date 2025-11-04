@@ -39,7 +39,9 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
 
             // Branding & tema
-            ->brandName('eMPK KAJ Admin')
+            ->brandName(
+                trim('eMPK KAJ Admin ' . (env('APP_CODENAME') ? '· ' . env('APP_CODENAME') : ''))
+            )
             ->colors(['primary' => Color::Emerald])
             ->darkMode(true)
             // ->brandLogo(asset('logo-empk.svg'))   // aktifkan setelah file siap

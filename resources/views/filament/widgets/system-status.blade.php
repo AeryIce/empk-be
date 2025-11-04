@@ -3,6 +3,12 @@
         <div class="flex flex-wrap items-center gap-2 text-sm">
             <span class="font-semibold">{{ $app }}</span>
 
+            @if(!empty($codename))
+                <span class="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xxs font-semibold text-violet-700">
+                    {{ $codename }}
+                </span>
+            @endif
+
             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xxs font-semibold
                 {{ $env === 'production' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">
                 {{ strtoupper($env) }}
