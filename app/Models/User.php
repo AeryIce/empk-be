@@ -2,20 +2,18 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
     /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
+     * Atur kolom yang boleh mass-assign (sesuaikan kalau kamu sudah punya).
      */
     protected $fillable = [
         'name',
@@ -24,25 +22,31 @@ class User extends Authenticatable
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
+     * Hidden & casts standar.
      */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        // Kalau project-mu sudah pakai cast hashed di Laravel 10+, boleh aktifkan:
+        // 'password' => 'hashed',
+    ];
+
     /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
+     * Izinkan user mengakses panel Filament.
+     * Untuk demo, kita allow semua user yang berhasil login.
+     * Nanti bisa kamu batasi per-role/per-email.
      */
-    protected function casts(): array
+    public function canAccessPanel(Panel $panel): bool
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return true;
+
+        // Contoh pembatasan:
+        // return str_ends_with($this->email, '@mpk.local');
+        // atau cek role:
+        // return in_array($this->role, ['superadmin','admin']);
     }
 }
