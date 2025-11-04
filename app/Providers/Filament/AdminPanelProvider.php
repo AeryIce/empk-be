@@ -7,10 +7,6 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 
-// ✅ pakai namespace yang benar
-use Filament\Support\Assets\Css;
-use Filament\Support\Assets\Js;
-
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -48,27 +44,19 @@ class AdminPanelProvider extends PanelProvider
             ->colors(['primary' => Color::Emerald])
             ->darkMode(true)
 
-            // ✅ Daftarkan asset publish-an ke panel (pakai helper asset() biar aman URL-nya)
-            ->assets([
-                Css::make('filament-support-css', asset('css/filament/support/support.css')),
-                Css::make('filament-forms-css', asset('css/filament/forms/forms.css')),
-                Css::make('filament-app-css', asset('css/filament/filament/app.css')),
-
-                Js::make('filament-support-js', asset('js/filament/support/support.js')),
-                Js::make('filament-notifications-js', asset('js/filament/notifications/notifications.js')),
-                Js::make('filament-tables-js', asset('js/filament/tables/components/table.js')),
-                Js::make('filament-app-js', asset('js/filament/filament/app.js')),
-            ])
+            // Inject asset publish-an (CSS/JS) lewat satu view hook.
+            // Pastikan file: resources/views/filament/hooks/assets.blade.php
+            ->renderHook('panels::head.end', fn () => view('filament.hooks.assets'))
 
             // Auth & halaman dasar
             ->login()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
-                \App\Filament\Pages\Dashboard::class, // pakai Dashboard kustom kamu; kalau belum ada ganti ke Pages\Dashboard::class
+                Pages\Dashboard::class, // default Dashboard; widget2 akan tampil di sini
             ])
 
-            // Widgets
+            // Widgets di dashboard
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 SystemStatus::class,
