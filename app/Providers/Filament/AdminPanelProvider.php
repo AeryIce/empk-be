@@ -20,7 +20,6 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
-// === Custom Widgets ===
 use App\Filament\Widgets\SystemStatus;
 use App\Filament\Widgets\OverviewStats;
 use App\Filament\Widgets\WelcomeCard;
@@ -44,35 +43,31 @@ class AdminPanelProvider extends PanelProvider
             )
             ->colors(['primary' => Color::Emerald])
             ->darkMode(true)
-            // ->brandLogo(asset('logo-empk.svg'))   // aktifkan setelah file siap
-            // ->favicon(asset('favicon.ico'))       // aktifkan setelah file siap
-            // ->sidebarCollapsibleOnDesktop()
 
-            // Auth & halaman dasar
+            // Paksa inject asset Filament yang sudah dipublish ke /public
+            ->renderHook('panels::head.end', fn () => view('filament.hooks.assets'))
+
+            // Login & halaman dasar
             ->login()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
-                \App\Filament\Pages\Dashboard::class,
+                // Jika kamu sudah buat Dashboard kustom, gunakan baris di bawah:
+                // \App\Filament\Pages\Dashboard::class,
+                // Kalau belum, pakai default:
+                Pages\Dashboard::class,
             ])
 
-            // Widget registry (satu kali, urut)
+            // Widgets
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                // Top section
                 SystemStatus::class,
                 WelcomeCard::class,
                 AgendaRapatDemo::class,
-
-                // Angka ringkas
                 OverviewStats::class,
-
-                // Charts “cetar”
                 TrenKunjunganChart::class,
                 DistribusiKategoriInfoChart::class,
                 SekolahPerJenjangChart::class,
-
-                // Built-in
                 Widgets\AccountWidget::class,
                 // Widgets\FilamentInfoWidget::class, // opsional
             ])
