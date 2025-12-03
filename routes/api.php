@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\FoundationController;
+
 use App\Http\Controllers\Api\SchoolController;
 
 Route::get('/foundations', [FoundationController::class, 'index']);
