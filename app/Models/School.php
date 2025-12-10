@@ -39,6 +39,10 @@ class School extends Model
         'kapel' => 'boolean',
         'aula' => 'boolean',
         'kantin_sehat' => 'boolean',
+
+        // --- Harvy & DAPO snapshot ---
+        'dapo_snapshot'      => 'array',
+        'dapo_last_sync_at'  => 'immutable_datetime',
     ];
 
     public function foundation(): BelongsTo
