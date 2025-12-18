@@ -77,16 +77,21 @@ class FoundationController extends Controller
                 'brochure_pdf_url' => $foundation->brochure_pdf_url,
             ],
 
-            'schools' => $foundation->schools->map(function ($school) {
-                return [
-                    'id' => $school->id,
-                    'nama' => $school->nama,
-                    'jenjang' => $school->jenjang,
-                    'kabkota' => $school->kabkota,
-                    'paroki' => $school->paroki,
-                    'slug' => $school->slug,
-                ];
-            }),
-        ]);
+            'schools' => $foundation->schools->map(function ($school) use ($foundation) {
+            return [
+                'id' => $school->id,
+                'nama' => $school->nama,
+                'jenjang' => $school->jenjang,
+                'kabkota' => $school->kabkota,
+                'paroki' => $school->paroki,
+                'slug' => $school->slug,
+
+                // ✅ Kalau sekolah punya cover/logo sendiri → pakai itu.
+                // Kalau kosong → fallback ke cover/logo yayasan.
+                'cover_url' => $school->cover_url ?: ($foundation->cover_url ?? null),
+                'logo_url'  => $school->logo_url  ?: ($foundation->logo_url  ?? null),
+            ];
+        }),
+ ]);
     }
 }
