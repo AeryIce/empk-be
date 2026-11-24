@@ -26,9 +26,6 @@
                 <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xxs font-semibold text-rose-700">
                     DB FAIL
                 </span>
-                @if($db_error)
-                    <span class="text-xs text-rose-600 truncate max-w-sm" title="{{ $db_error }}">({{ $db_error }})</span>
-                @endif
             @endif
 
             <a class="ml-auto text-xs text-blue-600 hover:underline" href="{{ url('/healthz') }}" target="_blank">/healthz</a>

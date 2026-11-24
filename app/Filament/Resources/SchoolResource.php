@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SchoolResource\Pages;
 use App\Models\School;
+use Illuminate\Support\Facades\Gate;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -17,6 +18,8 @@ use Filament\Notifications\Notification;
 class SchoolResource extends Resource
 {
     protected static ?string $model = School::class;
+
+    protected static bool $shouldCheckPolicyExistence = false;
 
     protected static ?string $navigationIcon = 'heroicon-o-academic-cap';
 
@@ -654,6 +657,7 @@ class SchoolResource extends Resource
             Tables\Actions\EditAction::make(),
 
             Tables\Actions\Action::make('harvy_sync')
+                ->authorize(fn (School $record): bool => Gate::allows('update', $record))
                 ->label('Harvy: Sync DAPO')
                 ->icon('heroicon-o-cloud-arrow-down')
                 ->color('info')
@@ -673,6 +677,8 @@ class SchoolResource extends Resource
                     ];
                 })
                 ->action(function (School $record, array $data): void {
+                    Gate::authorize('update', $record);
+
                     $dapoUrl = trim($data['dapo_school_url'] ?? '');
 
                     if ($dapoUrl === '') {

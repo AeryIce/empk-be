@@ -13,6 +13,8 @@ class Foundation extends Model
     // Biar fleksibel, kita pakai guarded kosong
     protected $guarded = [];
 
+    protected $casts = ['tags' => 'array'];
+
     public function schools(): HasMany
     {
         return $this->hasMany(School::class);

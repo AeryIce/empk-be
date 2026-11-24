@@ -20,6 +20,14 @@ final class HarvyDapoImporter
     public function runForSchool(School $school): HarvyDapoResult
     {
         $sourceUrl = $this->resolveSourceUrl($school);
+        $target = parse_url($sourceUrl);
+
+        if (($target['scheme'] ?? null) !== 'https'
+            || ! in_array(strtolower($target['host'] ?? ''), ['dapo.kemendikdasmen.go.id', 'dapo.kemdikbud.go.id'], true)
+            || ($target['port'] ?? 443) !== 443 || isset($target['user']) || isset($target['pass'])) {
+            throw new \InvalidArgumentException('Gunakan URL HTTPS resmi DAPO.');
+        }
+
         $syncedAt  = CarbonImmutable::now();
 
         $mappedFields = [];
@@ -335,7 +343,7 @@ final class HarvyDapoImporter
             $attempts++;
 
             try {
-                $res = Http::timeout(15)->get($url);
+                $res = Http::withoutRedirecting()->timeout(15)->get($url);
 
                 $attemptLogs[] = [
                     'attempt' => $attempts,

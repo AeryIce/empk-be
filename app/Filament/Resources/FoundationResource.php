@@ -17,6 +17,8 @@ class FoundationResource extends Resource
 {
     protected static ?string $model = Foundation::class;
 
+    protected static bool $shouldCheckPolicyExistence = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
 
     protected static ?string $navigationLabel = 'Yayasan';

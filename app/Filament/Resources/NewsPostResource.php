@@ -17,6 +17,8 @@ class NewsPostResource extends Resource
 {
     protected static ?string $model = NewsPost::class;
 
+    protected static bool $shouldCheckPolicyExistence = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-newspaper';
     protected static ?string $navigationGroup = 'Publikasi';
     protected static ?string $navigationLabel = 'Berita & Event';
