@@ -2,18 +2,46 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\ProvisionPanelUser;
 use App\Enums\PanelRole;
+use App\Filament\Pages\Auth\Login;
 use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Logger;
+use Illuminate\Support\Env;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
+use Livewire\Livewire;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger as MonologLogger;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
 
 class PanelProvisioningTest extends TestCase
 {
     use RefreshDatabase;
+
+    private array $originalEnvironment = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->originalEnvironment as $key => $value) {
+            if ($value === null) {
+                Env::getRepository()->clear($key);
+            } else {
+                Env::getRepository()->set($key, $value);
+            }
+        }
+
+        parent::tearDown();
+    }
 
     public function test_a_new_account_is_inactive_until_the_one_time_code_is_used(): void
     {
@@ -117,6 +145,182 @@ class PanelProvisioningTest extends TestCase
         $this->assertSame($passwordHash, $user->refresh()->password);
         $this->assertNull($user->role);
         $this->assertNull($user->panel_activated_at);
+    }
+
+    public function test_manual_activation_displays_once_without_smtp_and_preserves_reserved_dev_accounts(): void
+    {
+        $this->configureManualFixture();
+        $moderator = User::factory()->create();
+        $legacy = User::factory()->create();
+        $this->assertSame(1, $moderator->id);
+        $this->assertSame(2, $legacy->id);
+        $existingHash = $moderator->password;
+
+        $this->artisan('empk:provision-panel-user', ['email' => $moderator->email, 'role' => 'super_admin', '--target' => 'development', '--existing-user-id' => '1'])->assertFailed();
+        $this->artisan('empk:provision-panel-user', ['email' => $legacy->email, 'role' => 'super_admin', '--target' => 'development', '--existing-user-id' => '2'])->assertFailed();
+        $this->artisan('empk:provision-panel-user', ['email' => $moderator->email, 'role' => 'super_moderator', '--target' => 'development', '--existing-user-id' => '1'])
+            ->expectsConfirmation('Approve panel access as super_moderator in development for the account entered?', 'yes')->assertSuccessful();
+
+        $handler = new TestHandler;
+        Log::swap(new Logger(new MonologLogger('manual-activation-fixture', [$handler])));
+        Mail::shouldReceive('getSymfonyTransport', 'raw')->never();
+
+        [$status, $output] = $this->runManual();
+        $this->assertSame(0, $status);
+        $code = $this->readManualCode($output);
+        $recipient = User::where('email', 'manual-fixture@example.invalid')->sole();
+        $this->assertFalse($recipient->canManagePanelContent());
+        $this->assertNull($recipient->panel_activated_at);
+        $this->assertFalse(str_contains($output, $recipient->email));
+        $storedToken = DB::table('password_reset_tokens')->where('email', $recipient->email)->value('token');
+        $this->assertTrue(Hash::check($code, $storedToken));
+        $this->assertFalse(hash_equals($storedToken, $code));
+
+        [$repeatStatus, $repeatOutput] = $this->runManual();
+        $this->assertSame(0, $repeatStatus);
+        $this->assertFalse(str_contains($repeatOutput, $code));
+        $this->assertSame(0, preg_match('/^[0-9a-f]{64}\r?$/m', $repeatOutput));
+
+        $this->post('/admin/activate', $this->activation($recipient, $code))->assertRedirect('/admin/login');
+        $this->post('/admin/activate', $this->activation($recipient, $code))->assertSessionHasErrors('activation_code');
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => $recipient->email]);
+        $this->assertSame(PanelRole::SuperAdmin, $recipient->refresh()->panelRole());
+        $this->assertTrue(Hash::check('A test passphrase for eMPK', $recipient->password));
+
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        Livewire::test(Login::class)->fillForm(['email' => $recipient->email, 'password' => 'A test passphrase for eMPK'])
+            ->call('authenticate')->assertHasNoErrors();
+        $this->assertAuthenticatedAs($recipient);
+        $this->assertSame(PanelRole::SuperModerator, $moderator->refresh()->panelRole());
+        $this->assertTrue($moderator->isPanelModerator());
+        $this->assertSame($existingHash, $moderator->password);
+        $this->assertNull($legacy->refresh()->role);
+        $this->assertFalse($legacy->canManagePanelContent());
+
+        $logs = json_encode($handler->getRecords(), JSON_THROW_ON_ERROR);
+        $this->assertStringContainsString('panel.activation.completed', $logs);
+        foreach ([$code, $recipient->email, 'A test passphrase for eMPK'] as $secret) {
+            $this->assertFalse(str_contains($logs, $secret));
+        }
+    }
+
+    public function test_manual_reissue_replaces_unexpired_codes_and_new_codes_still_expire(): void
+    {
+        $this->configureManualFixture();
+        [$status, $output] = $this->runManual();
+        $this->assertSame(0, $status);
+        $original = $this->readManualCode($output);
+        $recipient = User::sole();
+        $this->assertSame(1, $this->runManual(['--resend' => true])[0]);
+
+        $this->travel(2)->minutes();
+        $this->assertTrue(Password::broker('users')->tokenExists($recipient, $original));
+        [$status, $output] = $this->runManual(['--resend' => true]);
+        $this->assertSame(0, $status);
+        $replacement = $this->readManualCode($output);
+        $this->assertFalse(hash_equals($original, $replacement));
+        $this->post('/admin/activate', $this->activation($recipient, $original))->assertSessionHasErrors('activation_code');
+
+        $this->travel(61)->minutes();
+        $this->post('/admin/activate', $this->activation($recipient, $replacement))->assertSessionHasErrors('activation_code');
+        $this->assertNull($recipient->refresh()->panel_activated_at);
+    }
+
+    public function test_manual_activation_refuses_unapproved_targets_recipients_and_terminals(): void
+    {
+        $this->configureManualFixture();
+        $this->assertSame(1, $this->runManual(simulateTerminal: false)[0]);
+        $this->assertSame(1, $this->runManual(['--no-interaction' => true])[0]);
+        $this->assertSame(1, $this->runManual(confirmation: "yes\nno\n")[0]);
+        $this->assertSame(1, $this->runManual(['role' => 'super_moderator'])[0]);
+        $this->assertSame(1, $this->runManual(['email' => 'another@example.invalid'])[0]);
+        $this->assertSame(1, $this->runManual(['--existing-user-id' => '1', '--name' => null])[0]);
+        $this->assertSame(1, $this->runManual(['--target' => 'unrecognized'])[0]);
+
+        $this->setFixtureEnvironment('RAILWAY_ENVIRONMENT_NAME', 'production');
+        $this->assertSame(1, $this->runManual(['--target' => 'production'])[0]);
+        $this->setFixtureEnvironment('RAILWAY_ENVIRONMENT_NAME', null);
+        $this->assertSame(1, $this->runManual(['--target' => 'testing'])[0]);
+        $this->setFixtureEnvironment('RAILWAY_ENVIRONMENT_NAME', 'development');
+        config(['app.url' => 'http://dev.example.invalid']);
+        $this->assertSame(1, $this->runManual()[0]);
+        config(['app.url' => 'https://dev.example.invalid']);
+        $this->setFixtureEnvironment('EMPK_DEV_MANUAL_ACTIVATION_EMAIL', null);
+        $this->assertSame(1, $this->runManual()[0]);
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('password_reset_tokens', 0);
+    }
+
+    public function test_manual_activation_refuses_to_reuse_an_existing_unprivileged_email(): void
+    {
+        $this->configureManualFixture();
+        $existing = User::factory()->create(['email' => 'Manual-Fixture@example.invalid']);
+        $original = $existing->refresh()->getRawOriginal();
+        $this->assertSame(1, $this->runManual()[0]);
+        $this->assertSame(1, $this->runManual(['--resend' => true])[0]);
+        $this->assertTrue($original === $existing->refresh()->getRawOriginal());
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('password_reset_tokens', 0);
+    }
+
+    private function configureManualFixture(): void
+    {
+        $this->setFixtureEnvironment('RAILWAY_ENVIRONMENT_NAME', 'development');
+        $this->setFixtureEnvironment('EMPK_DEV_MANUAL_ACTIVATION_EMAIL', 'manual-fixture@example.invalid');
+        config(['app.url' => 'https://dev.example.invalid', 'mail.default' => 'log']);
+    }
+
+    private function setFixtureEnvironment(string $key, ?string $value): void
+    {
+        $env = Env::getRepository();
+        if (! array_key_exists($key, $this->originalEnvironment)) {
+            $this->originalEnvironment[$key] = $env->get($key);
+        }
+
+        $value === null ? $env->clear($key) : $env->set($key, $value);
+    }
+
+    /** @return array{int, string} */
+    private function runManual(array $options = [], bool $simulateTerminal = true, string $confirmation = "yes\nyes\n"): array
+    {
+        $command = new ProvisionPanelUser;
+        if ($simulateTerminal) {
+            $command = new class extends ProvisionPanelUser
+            {
+                protected function hasPrivateTerminal(): bool
+                {
+                    return true;
+                }
+            };
+        }
+
+        $command->setLaravel($this->app);
+        $console = new Application;
+        $console->setAutoExit(false);
+        $console->setCatchExceptions(false);
+        $console->add($command);
+
+        $input = new ArrayInput(['command' => $command->getName()] + $options + [
+            'email' => '@approved-dev', 'role' => 'super_admin',
+            '--target' => 'development', '--name' => 'Manual Fixture', '--manual-activation' => true,
+        ]);
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $confirmation);
+        rewind($stream);
+        $input->setStream($stream);
+        $output = new BufferedOutput;
+        try {
+            return [$console->run($input, $output), $output->fetch()];
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    private function readManualCode(string $output): string
+    {
+        $this->assertSame(1, preg_match_all('/^[0-9a-f]{64}\r?$/m', $output, $matches));
+
+        return trim($matches[0][0]);
     }
 
     private function provisionOptions(string $email, array $extra = []): array
