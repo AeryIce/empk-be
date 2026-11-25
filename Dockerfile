@@ -30,6 +30,8 @@ RUN mkdir -p storage bootstrap/cache \
 # (opsional, toleran tanpa .env di build-time)
 RUN php artisan optimize:clear || true
 
+RUN php artisan filament:assets
+
 # Railway expose via PORT (default 8080)
 ENV PORT=8080
 EXPOSE 8080

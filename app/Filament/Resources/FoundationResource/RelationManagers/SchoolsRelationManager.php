@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\FoundationResource\RelationManagers;
 
 use App\Models\School;
+use Illuminate\Support\Facades\Gate;
 use App\Services\Harvy\HarvyDapoSyncService;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -76,6 +77,7 @@ class SchoolsRelationManager extends RelationManager
             ])
             ->actions([
                 Tables\Actions\Action::make('harvy_sync')
+                    ->authorize(fn (School $record): bool => Gate::allows('update', $record))
                     ->label('Harvy: Sync DAPO')
                     ->icon('heroicon-o-cloud-arrow-down')
                     ->color('info')
@@ -95,6 +97,8 @@ class SchoolsRelationManager extends RelationManager
                         ];
                     })
                     ->action(function (School $record, array $data): void {
+                        Gate::authorize('update', $record);
+
                         // 1. Ambil URL dari form
                         $dapoUrl = trim($data['dapo_school_url'] ?? '');
 

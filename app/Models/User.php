@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PanelRole;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -31,22 +32,26 @@ class User extends Authenticatable implements FilamentUser
 
     protected $casts = [
         'email_verified_at' => 'datetime',
-        // Kalau project-mu sudah pakai cast hashed di Laravel 10+, boleh aktifkan:
-        // 'password' => 'hashed',
+        'panel_activated_at' => 'datetime',
     ];
 
-    /**
-     * Izinkan user mengakses panel Filament.
-     * Untuk demo, kita allow semua user yang berhasil login.
-     * Nanti bisa kamu batasi per-role/per-email.
-     */
     public function canAccessPanel(Panel $panel): bool
     {
-        return true;
+        return $panel->getId() === 'admin' && $this->canManagePanelContent();
+    }
 
-        // Contoh pembatasan:
-        // return str_ends_with($this->email, '@mpk.local');
-        // atau cek role:
-        // return in_array($this->role, ['superadmin','admin']);
+    public function canManagePanelContent(): bool
+    {
+        return $this->panel_activated_at !== null && $this->panelRole() !== null;
+    }
+
+    public function isPanelModerator(): bool
+    {
+        return $this->canManagePanelContent() && $this->panelRole() === PanelRole::SuperModerator;
+    }
+
+    public function panelRole(): ?PanelRole
+    {
+        return PanelRole::tryFrom($this->role ?? '');
     }
 }
