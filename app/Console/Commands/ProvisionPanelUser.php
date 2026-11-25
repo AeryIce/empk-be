@@ -205,17 +205,27 @@ class ProvisionPanelUser extends Command
                 throw new RuntimeException;
             }
 
-            return [$user, $broker->createToken($user), 'resent'];
+            $status = 'resent';
+        } else {
+            if ($resend || $name === '') {
+                throw new RuntimeException;
+            }
+
+            $user = new User(['name' => $name, 'email' => $email, 'password' => Hash::make(Str::random(64))]);
+            $user->role = $role->value;
+            $user->save();
+            $status = 'created';
         }
 
-        if ($resend || $name === '') {
+        $code = $broker->createToken($user);
+        $updated = DB::table(config('auth.passwords.users.table'))
+            ->where('email', $user->getEmailForPasswordReset())
+            ->update(['panel_activation_delivery' => $manual ? 'manual' : 'email']);
+
+        if ($updated !== 1) {
             throw new RuntimeException;
         }
 
-        $user = new User(['name' => $name, 'email' => $email, 'password' => Hash::make(Str::random(64))]);
-        $user->role = $role->value;
-        $user->save();
-
-        return [$user, $broker->createToken($user), 'created'];
+        return [$user, $code, $status];
     }
 }

@@ -53,6 +53,7 @@ class PanelProvisioningTest extends TestCase
         $this->assertNull($user->panel_activated_at);
         $this->assertFalse($user->canManagePanelContent());
         $this->assertCount(1, Mail::getSymfonyTransport()->messages());
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => $user->email, 'panel_activation_delivery' => 'email']);
         $code = $this->latestCode();
 
         $this->get('/admin/activate')->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
@@ -172,19 +173,24 @@ class PanelProvisioningTest extends TestCase
         $this->assertFalse($recipient->canManagePanelContent());
         $this->assertNull($recipient->panel_activated_at);
         $this->assertFalse(str_contains($output, $recipient->email));
-        $storedToken = DB::table('password_reset_tokens')->where('email', $recipient->email)->value('token');
-        $this->assertTrue(Hash::check($code, $storedToken));
-        $this->assertFalse(hash_equals($storedToken, $code));
+        $storedToken = DB::table('password_reset_tokens')->where('email', $recipient->email)->first();
+        $this->assertSame('manual', $storedToken->panel_activation_delivery);
+        $this->assertTrue(Hash::check($code, $storedToken->token));
+        $this->assertFalse(hash_equals($storedToken->token, $code));
 
         [$repeatStatus, $repeatOutput] = $this->runManual();
         $this->assertSame(0, $repeatStatus);
         $this->assertFalse(str_contains($repeatOutput, $code));
         $this->assertSame(0, preg_match('/^[0-9a-f]{64}\r?$/m', $repeatOutput));
 
-        $this->post('/admin/activate', $this->activation($recipient, $code))->assertRedirect('/admin/login');
+        $this->post('/admin/activate', $this->activation($recipient, $code) + ['panel_activation_delivery' => 'email'])
+            ->assertRedirect('/admin/login');
+        $activationSession = [session()->getId(), session()->token()];
         $this->post('/admin/activate', $this->activation($recipient, $code))->assertSessionHasErrors('activation_code');
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $recipient->email]);
         $this->assertSame(PanelRole::SuperAdmin, $recipient->refresh()->panelRole());
+        $this->assertNotNull($recipient->panel_activated_at);
+        $this->assertNull($recipient->email_verified_at);
         $this->assertTrue(Hash::check('A test passphrase for eMPK', $recipient->password));
 
         Filament::setCurrentPanel(Filament::getPanel('admin'));
@@ -199,9 +205,62 @@ class PanelProvisioningTest extends TestCase
 
         $logs = json_encode($handler->getRecords(), JSON_THROW_ON_ERROR);
         $this->assertStringContainsString('panel.activation.completed', $logs);
-        foreach ([$code, $recipient->email, 'A test passphrase for eMPK'] as $secret) {
+        foreach ([$code, $recipient->email, 'A test passphrase for eMPK', ...$activationSession, session()->getId(), session()->token()] as $secret) {
             $this->assertFalse(str_contains($logs, $secret));
         }
+    }
+
+    public function test_reissuing_an_emailed_code_manually_replaces_its_verification_provenance(): void
+    {
+        $this->configureManualFixture();
+        config(['mail.default' => 'array']);
+        $options = array_replace($this->provisionOptions('manual-fixture@example.invalid', ['--name' => 'Manual Fixture']), ['--target' => 'development']);
+        $this->provision($options);
+        $recipient = User::sole();
+        $emailedCode = $this->latestCode();
+
+        $this->travel(2)->minutes();
+        [$status, $output] = $this->runManual(['--resend' => true]);
+        $this->assertSame(0, $status);
+        $manualCode = $this->readManualCode($output);
+
+        $this->post('/admin/activate', $this->activation($recipient, $emailedCode))->assertSessionHasErrors('activation_code');
+        $this->post('/admin/activate', $this->activation($recipient, $manualCode))->assertRedirect('/admin/login');
+        $this->assertTrue($recipient->refresh()->canManagePanelContent());
+        $this->assertNull($recipient->email_verified_at);
+        $this->assertCount(1, Mail::getSymfonyTransport()->messages());
+    }
+
+    public function test_legacy_codes_without_provenance_preserve_the_existing_verification_status(): void
+    {
+        foreach ([null, now()->subDay()->startOfSecond()] as $verifiedAt) {
+            $recipient = User::factory()->create(['role' => PanelRole::SuperAdmin->value, 'email_verified_at' => $verifiedAt]);
+            $code = Password::broker('users')->createToken($recipient);
+            $this->assertDatabaseHas('password_reset_tokens', ['email' => $recipient->email, 'panel_activation_delivery' => null]);
+
+            $this->post('/admin/activate', $this->activation($recipient, $code))->assertRedirect('/admin/login');
+            $this->assertTrue($recipient->refresh()->canManagePanelContent());
+            $this->assertEquals($verifiedAt, $recipient->email_verified_at);
+        }
+    }
+
+    public function test_delivery_migration_rollback_preserves_the_broker_token_hash(): void
+    {
+        $recipient = User::factory()->create();
+        $code = Password::broker('users')->createToken($recipient);
+        $tokens = DB::table('password_reset_tokens')->where('email', $recipient->email);
+        $tokens->update(['panel_activation_delivery' => 'manual']);
+        $before = $tokens->value('token');
+        $migration = require database_path('migrations/2026_11_25_000000_add_panel_activation_delivery_to_password_reset_tokens.php');
+
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('password_reset_tokens', 'panel_activation_delivery'));
+        $this->assertTrue(hash_equals($before, $tokens->value('token')));
+        $this->assertTrue(Password::broker('users')->tokenExists($recipient, $code));
+
+        $migration->up();
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => $recipient->email, 'panel_activation_delivery' => null]);
+        $this->assertTrue(hash_equals($before, $tokens->value('token')));
     }
 
     public function test_manual_reissue_replaces_unexpired_codes_and_new_codes_still_expire(): void
@@ -328,15 +387,15 @@ class PanelProvisioningTest extends TestCase
         return ['email' => $email, 'role' => PanelRole::SuperAdmin->value, '--target' => 'testing'] + $extra;
     }
 
-    private function approvalPrompt(string $role = 'super_admin'): string
+    private function approvalPrompt(string $role = 'super_admin', string $target = 'testing'): string
     {
-        return "Approve panel access as {$role} in testing for the account entered?";
+        return "Approve panel access as {$role} in {$target} for the account entered?";
     }
 
     private function provision(array $options, int $exitCode = 0): void
     {
         $this->artisan('empk:provision-panel-user', $options)
-            ->expectsConfirmation($this->approvalPrompt($options['role']), 'yes')->assertExitCode($exitCode);
+            ->expectsConfirmation($this->approvalPrompt($options['role'], $options['--target']), 'yes')->assertExitCode($exitCode);
     }
 
     private function latestCode(): string

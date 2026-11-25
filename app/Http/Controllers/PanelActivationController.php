@@ -57,19 +57,31 @@ class PanelActivationController extends Controller
     private function activate(#[\SensitiveParameter] array $data): ?User
     {
         $user = User::query()->where('email', Str::lower($data['email']))->lockForUpdate()->first();
+        if ($user === null || $user->panelRole() === null || $user->panel_activated_at !== null) {
+            return null;
+        }
+
+        $token = DB::table(config('auth.passwords.users.table'))
+            ->where('email', $user->getEmailForPasswordReset())
+            ->lockForUpdate()->first(['panel_activation_delivery']);
         $broker = Password::broker('users');
 
-        if ($user === null || $user->panelRole() === null || $user->panel_activated_at !== null || ! $broker->tokenExists($user, $data['activation_code'])) {
+        if ($token === null || ! $broker->tokenExists($user, $data['activation_code'])) {
             return null;
         }
 
         $now = now();
-        $user->forceFill([
+        $attributes = [
             'password' => Hash::make($data['password']),
-            'email_verified_at' => $now,
             'panel_activated_at' => $now,
             'remember_token' => null,
-        ])->save();
+        ];
+
+        if ($token->panel_activation_delivery === 'email' && $user->email_verified_at === null) {
+            $attributes['email_verified_at'] = $now;
+        }
+
+        $user->forceFill($attributes)->save();
         $broker->deleteToken($user);
 
         return $user;
