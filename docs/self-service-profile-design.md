@@ -55,6 +55,8 @@ Daftar dengan filter lembaga, kategori scope, status dan tanggal. Aksi Undang Pe
 
 ## Review dan verifikasi bertahap
 
+Gunakan [checklist release dan rollback DEV](p0-dev-release-runbook.md) untuk cutover P0 setelah GO terpisah. P0 masih membaca field kanonis sekolah yang lolos publikasi. Salinan publik immutable baru berlaku setelah mekanisme revisi P1 tersedia.
+
 1. Review P0 BE/FE bersama. P0 mengosongkan 487 sekolah dan 70 LPK dari tampilan publik berdasar data DEV audit. Sumber UI memerlukan header X-EMPK-Publication strict-v1 agar BE lama tidak diterima selama transisi. Registri tetap tersedia bagi operator yang berwenang.
 2. Validasi skema, FK, versi, throttle, alur undangan dan keputusan sesi. Tes integrasi staf harus mengirim request nyata untuk kasus lintas sekolah/LPK, scope tidak aktif/dicabut, body scope palsu, token replay/kedaluwarsa, panel login ditolak, profile revision stale, dan publish otomatis ditolak. Uji satu akun dengan dua assignment independen. Cakupan kriteria ini menjadi syarat sebelum pilot.
 3. Pilot satu sekolah dan satu LPK secara terpisah. Verifikasi publik tetap kosong sampai review/publish, dan perubahan setelah publish hanya menjadi draft baru. Audit field dan hapus cache sebelum aktivasi. Persetujuan terpisah diperlukan untuk setiap perubahan environment atau data.

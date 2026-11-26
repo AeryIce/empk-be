@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\FoundationResource\RelationManagers;
 
+use App\Filament\Concerns\AuthorizesRestrictedTableActions;
 use App\Models\School;
 use Illuminate\Support\Facades\Gate;
 use App\Services\Harvy\HarvyDapoSyncService;
@@ -14,6 +15,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class SchoolsRelationManager extends RelationManager
 {
+    use AuthorizesRestrictedTableActions;
+
     protected static string $relationship = 'schools';
 
     protected static ?string $title = 'Sekolah di bawah Yayasan ini';
