@@ -22,12 +22,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 use App\Filament\Widgets\SystemStatus;
-use App\Filament\Widgets\OverviewStats;
 use App\Filament\Widgets\WelcomeCard;
-use App\Filament\Widgets\AgendaRapatDemo;
-use App\Filament\Widgets\TrenKunjunganChart;
-use App\Filament\Widgets\DistribusiKategoriInfoChart;
-use App\Filament\Widgets\SekolahPerJenjangChart;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -58,15 +53,9 @@ class AdminPanelProvider extends PanelProvider
             ])
 
             // Widgets di dashboard
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 SystemStatus::class,
                 WelcomeCard::class,
-                AgendaRapatDemo::class,
-                OverviewStats::class,
-                TrenKunjunganChart::class,
-                DistribusiKategoriInfoChart::class,
-                SekolahPerJenjangChart::class,
                 Widgets\AccountWidget::class,
             ])
 

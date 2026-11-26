@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,6 +45,14 @@ class School extends Model
         'dapo_snapshot'      => 'array',
         'dapo_last_sync_at'  => 'immutable_datetime',
     ];
+
+    public function scopePublished(Builder $query): Builder
+    {
+        return $query->where('is_published', true)
+            ->where('status_verifikasi', 'verified')
+            ->whereNotNull('verified_at')
+            ->whereNotNull('verified_by');
+    }
 
     public function foundation(): BelongsTo
     {
