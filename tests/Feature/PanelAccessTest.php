@@ -116,6 +116,9 @@ class PanelAccessTest extends TestCase
         $this->assertDatabaseHas('news_posts', ['title' => 'Berita Uji']);
 
         $this->assertSame('Yayasan Uji Edit', $foundation->refresh()->name);
+        Livewire::test(EditFoundation::class, ['record' => $foundation->id])->assertActionHidden('delete');
+        $this->assertModelExists($foundation);
+        $this->actingAs($moderator);
         Livewire::test(EditFoundation::class, ['record' => $foundation->id])->callAction('delete');
         $this->assertModelMissing($foundation);
     }

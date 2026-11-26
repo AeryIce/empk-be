@@ -453,26 +453,31 @@ class SchoolResource extends Resource
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('dapo_id')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('DAPO ID')
                             ->maxLength(50),
 
                         Forms\Components\TextInput::make('dapo_school_url')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('DAPO School URL')
                             ->placeholder('https://dapo.kemendikdasmen.go.id/sekolah/...')
                             ->url()
                             ->maxLength(255),
 
                         Forms\Components\TextInput::make('referensi_pusdatin_url')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Referensi Pusdatin URL')
                             ->url()
                             ->maxLength(255),
 
                         Forms\Components\TextInput::make('sekolah_kita_url')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Sekolah Kita URL')
                             ->url()
                             ->maxLength(255),
 
                         Forms\Components\TextInput::make('rapor_pmp_url')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Rapor PMP URL')
                             ->url()
                             ->maxLength(255),
@@ -496,14 +501,17 @@ class SchoolResource extends Resource
                             ->label('Tgl SK Izin Operasional'),
 
                         Forms\Components\TextInput::make('nama_bank')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Nama Bank')
                             ->maxLength(100),
 
                         Forms\Components\TextInput::make('cabang_bank')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Cabang Bank')
                             ->maxLength(100),
 
                         Forms\Components\TextInput::make('rekening_atas_nama')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Rekening a.n.')
                             ->maxLength(150),
                     ]),
@@ -525,6 +533,7 @@ class SchoolResource extends Resource
                             ->helperText('Tag umum untuk pencarian & filter.'),
 
                         Forms\Components\Toggle::make('is_published')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Tampilkan di portal utama?')
                             ->default(false),
 
@@ -542,6 +551,7 @@ class SchoolResource extends Resource
                     ->columns(2)
                     ->schema([
                         Forms\Components\Textarea::make('ai_summary')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('Ringkasan AI')
                             ->rows(3)
                             ->disabled()
@@ -549,6 +559,7 @@ class SchoolResource extends Resource
                             ->helperText('Direncanakan diisi otomatis oleh modul AI (tidak untuk diedit manual).'),
 
                         Forms\Components\Textarea::make('ai_flags')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('AI Flags')
                             ->rows(3)
                             ->disabled()
@@ -559,6 +570,7 @@ class SchoolResource extends Resource
                             ->content(fn (?School $record) => $record?->dapo_last_sync_at?->format('d-m-Y H:i') ?? '-'),
 
                         Forms\Components\Textarea::make('dapo_snapshot')
+                            ->visible(fn (): bool => Gate::allows('manage-school-internals'))
                             ->label('DAPO Snapshot (JSON)')
                             ->rows(5)
                             ->disabled()
@@ -657,7 +669,7 @@ class SchoolResource extends Resource
             Tables\Actions\EditAction::make(),
 
             Tables\Actions\Action::make('harvy_sync')
-                ->authorize(fn (School $record): bool => Gate::allows('update', $record))
+                ->authorize(fn (School $record): bool => Gate::allows('syncDapo', $record))
                 ->label('Harvy: Sync DAPO')
                 ->icon('heroicon-o-cloud-arrow-down')
                 ->color('info')
@@ -677,7 +689,7 @@ class SchoolResource extends Resource
                     ];
                 })
                 ->action(function (School $record, array $data): void {
-                    Gate::authorize('update', $record);
+                    Gate::authorize('syncDapo', $record);
 
                     $dapoUrl = trim($data['dapo_school_url'] ?? '');
 
@@ -828,7 +840,7 @@ class SchoolResource extends Resource
     {
         $data['slug'] = static::generateSlug($data);
 
-        return $data;
+        return static::filterRestrictedFields($data);
     }
 
     public static function mutateFormDataBeforeSave(array $data): array
@@ -838,6 +850,19 @@ class SchoolResource extends Resource
         }
 
         return $data;
+    }
+
+    public static function filterRestrictedFields(array $data): array
+    {
+        if (Gate::allows('manage-school-internals')) {
+            return $data;
+        }
+
+        return \Illuminate\Support\Arr::except($data, [
+            'is_published', 'nama_bank', 'cabang_bank', 'rekening_atas_nama',
+            'dapo_id', 'dapo_school_url', 'referensi_pusdatin_url', 'sekolah_kita_url', 'rapor_pmp_url',
+            'dapo_last_sync_at', 'dapo_snapshot', 'ai_summary', 'ai_flags',
+        ]);
     }
 
     protected static function generateSlug(array $data): string

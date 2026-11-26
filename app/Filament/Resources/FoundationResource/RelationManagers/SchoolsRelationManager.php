@@ -77,7 +77,7 @@ class SchoolsRelationManager extends RelationManager
             ])
             ->actions([
                 Tables\Actions\Action::make('harvy_sync')
-                    ->authorize(fn (School $record): bool => Gate::allows('update', $record))
+                    ->authorize(fn (School $record): bool => Gate::allows('syncDapo', $record))
                     ->label('Harvy: Sync DAPO')
                     ->icon('heroicon-o-cloud-arrow-down')
                     ->color('info')
@@ -97,7 +97,7 @@ class SchoolsRelationManager extends RelationManager
                         ];
                     })
                     ->action(function (School $record, array $data): void {
-                        Gate::authorize('update', $record);
+                        Gate::authorize('syncDapo', $record);
 
                         // 1. Ambil URL dari form
                         $dapoUrl = trim($data['dapo_school_url'] ?? '');

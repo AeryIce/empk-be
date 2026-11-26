@@ -37,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(School::class, PanelContentPolicy::class);
         Gate::policy(NewsPost::class, PanelContentPolicy::class);
         Gate::define('view-panel-diagnostics', fn (User $user): bool => $user->isPanelModerator());
+        Gate::define('manage-school-internals', fn (User $user): bool => $user->isPanelModerator());
 
         Event::listen(function (Logout $event): void {
             if ($event->guard === 'web' && $event->user instanceof User) {
