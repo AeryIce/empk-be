@@ -10,6 +10,12 @@ Dokumen persiapan dan review. Langkah deployment di bawah menunggu GO Aga terpis
 - Tes lokal memakai PHP 8.3 dengan mbstring, intl, pdo_sqlite dan openssl. Jalankan suite PHPUnit dengan DB_CONNECTION=sqlite dan DB_DATABASE=:memory: dalam checkout bersih. Untuk smoke gunakan Node.js 22 dan jalankan node tests/Smoke/dev-recovery.mjs. Di Windows, EMPK_SMOKE_PHP dapat menunjuk php.exe dan EMPK_SMOKE_PHP_EXT_DIR ke folder ekstensi. Script hanya memakai loopback dan fixture SQLite sementara; dua akun sintetis menguji login Filament melalui Livewire, CSRF, serta kelanjutan sesi setelah guard menolak permintaan.
 - Simpan full commit SHA dari review dan SHA-256 arsip sumber bersama hasil tes. Arsip berisi file tracked dari git archive, termasuk server.php dan Dockerfile. File env lokal, vendor lokal, dump DB DEV, dan arsip pengguna tidak ikut. Build image Docker dan penerapan Railway DEV adalah verifikasi tersendiri. Status sehat dan tersedianya kandidat pada riwayat rollback baru dapat dibuktikan sesudah deployment disetujui.
 
+## Bukti CI Docker
+
+Workflow DEV recovery Docker verification hanya berjalan untuk PR #15 dari branch review yang sama. Job mengambil exact PR head, membuat arsip Git, mengecek commit yang tertanam di tar, dan membangun Dockerfile dari arsip itu. Tes memakai CMD bawaan image dan HTTP loopback dari dalam container dengan network none, tanpa port terpublikasi. Laravel memakai key sementara dan SQLite fixture yang dibuat di container. Image tidak dipush ke registry.
+
+Sebelum memakai bukti CI untuk review, unduh dev-recovery-docker-evidence-<SHA> dari run yang sukses untuk head PR yang sama. Dari direktori hasil ekstraksi, jalankan sha256sum -c SHA256SUMS lalu git get-tar-commit-id < guard-source.tar. Cocokkan SHA commit dengan provenance.txt dan head PR. Bukti mengikat arsip, Dockerfile, hash server.php di image, ID image, versi PHP, CMD, dan hasil smoke. CI Docker tidak membuktikan builder/start command efektif di Railway, kesehatan deployment DEV, atau ketersediaan rollback Railway.
+
 ## Target tetap
 
 | Resource | ID |
