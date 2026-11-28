@@ -22,7 +22,7 @@ function request(string $method, string $path, array $headers = []): array
 
     try {
         stream_set_timeout($socket, 5);
-        $fields = ['Host: '.BASE, 'Connection: close', 'Accept: application/json', ...$headers];
+        $fields = ['Host: '.BASE, 'Connection: close', ...$headers];
         fwrite($socket, "$method $path HTTP/1.1\r\n".implode("\r\n", $fields)."\r\n\r\n");
         $raw = stream_get_contents($socket);
     } finally {
@@ -106,7 +106,6 @@ $db = null;
 
 $routes = [
     ['/healthz', 200, 'ok'],
-    ['/admin', 302, null],
     ['/admin/login', 200, 'wire:submit="authenticate"'],
     ['/admin/activate', 200, 'name="activation_code"'],
     ['/api/berita?next=/api/schools', 200, '"slug":"fixture-news"'],
@@ -120,4 +119,9 @@ foreach ($routes as [$path, $expected, $marker]) {
     check($marker === null || str_contains($body, $marker), "$path returned an unexpected body.");
 }
 
-printf("PASS: %d directory responses and %d unaffected route checks, including /up.\n", count($cases), count($routes) + 1);
+[$browserStatus, $browserHeaders] = request('GET', '/admin', ['Accept: text/html']);
+check($browserStatus === 302 && str_ends_with($browserHeaders['location'][0] ?? '', '/admin/login'), 'The browser must be redirected to Filament login.');
+[$jsonStatus] = request('GET', '/admin', ['Accept: application/json']);
+check($jsonStatus === 401, 'An unauthenticated JSON request to Filament must return 401.');
+
+printf("PASS: %d directory responses and %d unaffected route checks, including /up.\n", count($cases), count($routes) + 3);
