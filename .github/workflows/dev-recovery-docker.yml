@@ -1,0 +1,114 @@
+name: DEV recovery Docker verification
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-recovery-docker-pr-15
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    if: >-
+      github.event.pull_request.number == 15 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'review/dev-recovery-directory-guard'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      EMPK_IMAGE: empk-dev-recovery-ci
+    steps:
+      - name: Check out the exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Archive and verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          evidence="$RUNNER_TEMP/empk-recovery-evidence"
+          context="$RUNNER_TEMP/empk-recovery-source"
+          mkdir -p "$evidence" "$context"
+          git archive --format=tar --output="$evidence/guard-source.tar" "$SOURCE_SHA"
+          test "$(git get-tar-commit-id < "$evidence/guard-source.tar")" = "$SOURCE_SHA"
+          (
+            cd "$evidence"
+            sha256sum guard-source.tar > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          tar -xf "$evidence/guard-source.tar" -C "$context"
+          for excluded in .git .env .env.testing auth.json vendor bootstrap/cache/config.php; do
+            test ! -e "$context/$excluded"
+          done
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --iidfile "$evidence/image-id.txt" \
+            --tag "$EMPK_IMAGE:$SOURCE_SHA" \
+            "$context"
+
+      - name: Verify image identity and smoke test loopback inside the container
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/empk-recovery-evidence"
+          context="$RUNNER_TEMP/empk-recovery-source"
+          image_id="$(cat "$evidence/image-id.txt")"
+          [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          test "$(docker image inspect "$image_id" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
+          cmd="$(docker image inspect "$image_id" --format '{{json .Config.Cmd}}')"
+          test "$cmd" = '["sh","-c","php -S 0.0.0.0:${PORT} -t public server.php"]'
+
+          # Temporary Laravel session key and disposable SQLite for the loopback test only.
+          export APP_KEY="base64:$(openssl rand -base64 32)"
+          container="$(docker run --detach --network none \
+            --env APP_KEY --env APP_ENV=testing --env APP_DEBUG=false \
+            --env APP_URL=http://127.0.0.1:8080 \
+            --env DB_CONNECTION=sqlite --env DB_DATABASE=/tmp/empk-recovery-ci.sqlite --env DB_URL= \
+            --env SESSION_DRIVER=array --env CACHE_STORE=array \
+            --env QUEUE_CONNECTION=sync --env MAIL_MAILER=array \
+            "$image_id")"
+          unset APP_KEY
+          trap 'docker rm --force "$container" >/dev/null' EXIT
+          test "$(docker inspect "$container" --format '{{.Image}}')" = "$image_id"
+          test "$(docker inspect "$container" --format '{{.HostConfig.NetworkMode}}')" = 'none'
+          router_sha="$(sha256sum "$context/server.php" | cut -d ' ' -f 1)"
+          dockerfile_sha="$(sha256sum "$context/Dockerfile" | cut -d ' ' -f 1)"
+          test "$(docker exec "$container" php -r 'echo hash_file("sha256", "server.php");')" = "$router_sha"
+          test "$(docker exec "$container" php -r 'echo hash_file("sha256", "Dockerfile");')" = "$dockerfile_sha"
+          php_version="$(docker exec "$container" php -r 'echo PHP_VERSION;')"
+          [[ "$php_version" =~ ^8\.3\. ]]
+          docker exec "$container" php tests/Smoke/dev-recovery-container.php | tee "$evidence/http-smoke.txt"
+
+          {
+            printf 'source_commit=%s\n' "$SOURCE_SHA"
+            printf 'image_id=%s\n' "$image_id"
+            printf 'router_sha256=%s\n' "$router_sha"
+            printf 'dockerfile_sha256=%s\n' "$dockerfile_sha"
+            printf 'php_version=%s\n' "$php_version"
+            printf 'image_cmd=%s\n' "$cmd"
+            printf 'container_network=none\n'
+          } | tee "$evidence/provenance.txt"
+          {
+            printf '### Recovery Docker verification\n\n'
+            echo '~~~text'
+            cat "$evidence/provenance.txt" "$evidence/SHA256SUMS" "$evidence/http-smoke.txt"
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep source archive and verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dev-recovery-docker-evidence-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/empk-recovery-evidence/
+          if-no-files-found: error
+          retention-days: 14
